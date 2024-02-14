@@ -1,5 +1,4 @@
-rmf task1Out
-pages = LOAD 'hdfs://localhost:9000/project2/pages.csv' USING PigStorage(',') 
+pages = LOAD 'hdfs://localhost:9000/project2/pages.csv' USING PigStorage(',')
          AS (PersonID: int, Name: chararray, Nationality: chararray, CountryCode: int, Hobby: chararray);
 cleanNationality = FILTER pages by Nationality == 'Ukraine';
 selectName = FOREACH cleanNationality GENERATE Name, Hobby;
