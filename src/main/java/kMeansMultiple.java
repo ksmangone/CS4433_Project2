@@ -32,7 +32,6 @@ public class kMeansMultiple {
         protected void setup(Context context) throws IOException, InterruptedException {
             URI[] cacheFiles = context.getCacheFiles();
             Path path = new Path(cacheFiles[0]);
-            System.out.println(path.toString());
             // open the stream
             FileSystem fs = FileSystem.get(context.getConfiguration());
             FSDataInputStream fis = fs.open(path);
@@ -44,7 +43,6 @@ public class kMeansMultiple {
             while (StringUtils.isNotEmpty(line = reader.readLine())) {
                 String[] split = line.split(",");
                 centroids.add(split[0] + "," + split[1]);
-                System.out.println("reading center");
             }
             // close the stream
             IOUtils.closeStream(reader);
@@ -106,8 +104,6 @@ public class kMeansMultiple {
             int centroidX = (int) (sumX / count);
             int centroidY = (int) (sumY / count);
 
-            System.out.println("Writting");
-
             context.write(new Text(centroidX + "," + centroidY), NullWritable.get());
 
         }
@@ -125,10 +121,8 @@ public class kMeansMultiple {
 
         boolean ret = false;
 
-        //Iterate 5 times
+        //Iterate 6 times
         for(int i = 0; i < 6; i++) {
-
-            System.out.println(i);
 
             //Start map-reduce job
             Configuration conf = new Configuration();
@@ -145,11 +139,11 @@ public class kMeansMultiple {
                 // Configure the DistributedCache
                 job.addCacheFile(new URI("src/main/data/centroids.csv"));
             } else {
-                job.addCacheFile(new URI("hdfs://localhost:9000/project2/kmeans_output/centroids" + (i-1)));
+                job.addCacheFile(new URI("src/main/data/kMeanOutput/centroids" + (i-1) + ".csv/part-r-00000"));
             }
 
             // Delete the output directory if it exists
-            Path outputPath = new Path("hdfs://localhost:9000/project2/kmeans_output/centroids" + i);
+            Path outputPath = new Path("src/main/data/kMeanOutput/centroids" + i + ".csv");
             FileSystem fs = outputPath.getFileSystem(conf);
             if (fs.exists(outputPath)) {
                 fs.delete(outputPath, true); // true will delete recursively

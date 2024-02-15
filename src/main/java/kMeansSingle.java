@@ -100,8 +100,8 @@ public class kMeansSingle {
                 count += 1;
             }
 
-            double centroidX = sumX / count;
-            double centroidY = sumY / count;
+            int centroidX = (int) (sumX / count);
+            int centroidY = (int) (sumY / count);
 
             context.write(new Text(centroidX + "," + centroidY), NullWritable.get());
 
