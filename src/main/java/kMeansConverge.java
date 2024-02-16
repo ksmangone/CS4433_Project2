@@ -1,6 +1,5 @@
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -14,11 +13,12 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 import java.io.*;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
 //Single-iteration k-means clustering algorithm
-public class kMeansSingle {
+public class kMeansConverge {
 
     public static class Map extends Mapper<Object, Text, Text, Text> {
 
@@ -27,8 +27,8 @@ public class kMeansSingle {
         //Add setup to read centroid file in memory
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
-            Path[] files = DistributedCache.getLocalCacheFiles(context.getConfiguration());
-            Path path = files[0];
+            URI[] cacheFiles = context.getCacheFiles();
+            Path path = new Path(cacheFiles[0]);
             // open the stream
             FileSystem fs = FileSystem.get(context.getConfiguration());
             FSDataInputStream fis = fs.open(path);
@@ -38,8 +38,9 @@ public class kMeansSingle {
             // read the record line by line
             String line;
             while (StringUtils.isNotEmpty(line = reader.readLine())) {
-                String[] split = line.split(",");
-                centroids.add(split[0] + "," + split[1]);
+                String[] split = line.split("\t");
+                String[] split1 = split[0].split(",");
+                centroids.add(split1[0] + "," + split1[1]);
             }
             // close the stream
             IOUtils.closeStream(reader);
@@ -83,7 +84,7 @@ public class kMeansSingle {
         }
     }
 
-    public static class Reduce extends Reducer<Text, Text, Text, NullWritable> {
+    public static class Reduce extends Reducer<Text, Text, Text, Text> {
 
         public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
 
@@ -101,7 +102,21 @@ public class kMeansSingle {
             int centroidX = sumX / count;
             int centroidY = sumY / count;
 
-            context.write(new Text(centroidX + "," + centroidY), NullWritable.get());
+            String[] previousC = key.toString().split(",");
+
+            //Convergent threshold is set to 1 but can be changed
+            int threshold = 1;
+
+            int xDif = Math.abs(Integer.valueOf(previousC[0]) - centroidX);
+            int yDif = Math.abs(Integer.valueOf(previousC[1]) - centroidY);
+
+            String converge = "no";
+
+            if(xDif <= threshold && yDif <= threshold) {
+                converge = "yes";
+            }
+
+            context.write(new Text(centroidX + "," + centroidY), new Text(converge));
 
         }
 
@@ -122,32 +137,60 @@ public class kMeansSingle {
         //Create file with centroids from data points
         dataGenerator.writeDatasetToCSV(k, 10000, "src/main/data/centroids.csv", true);
 
-        //Start map-reduce job
-        Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "kMeans");
+        boolean ret = false;
 
-        job.setJarByClass(kMeansSingle.class);
-        job.setMapperClass(kMeansSingle.Map.class);
-        job.setReducerClass(kMeansSingle.Reduce.class);
+        //Iterate 20 times or less
+        int R = 20;
+        for(int i = 0; i < R; i++) {
 
-        job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(Text.class);
+            //Start map-reduce job
+            Configuration conf = new Configuration();
+            Job job = Job.getInstance(conf, "kMeans");
 
-        // Configure the DistributedCache
-        DistributedCache.addCacheFile(new Path("src/main/data/centroids.csv").toUri(), job.getConfiguration());
-        DistributedCache.setLocalFiles(job.getConfiguration(), "src/main/data/centroids.csv");
+            job.setJarByClass(kMeansConverge.class);
+            job.setMapperClass(kMeansConverge.Map.class);
+            job.setReducerClass(kMeansConverge.Reduce.class);
 
-        // Delete the output directory if it exists
-        Path outputPath = new Path("src/main/data/kMeanOutput/centroids.csv");
-        FileSystem fs = outputPath.getFileSystem(conf);
-        if (fs.exists(outputPath)) {
-            fs.delete(outputPath, true); // true will delete recursively
+            job.setOutputKeyClass(Text.class);
+            job.setOutputValueClass(Text.class);
+
+            if(i == 0) {
+                // Configure the DistributedCache
+                job.addCacheFile(new URI("src/main/data/centroids.csv"));
+            } else {
+                job.addCacheFile(new URI("src/main/data/kMeanOutput/centroids" + (i-1) + ".csv/part-r-00000"));
+            }
+
+            // Delete the output directory if it exists
+            Path outputPath = new Path("src/main/data/kMeanOutput/centroids" + i + ".csv");
+            FileSystem fs = outputPath.getFileSystem(conf);
+            if (fs.exists(outputPath)) {
+                fs.delete(outputPath, true); // true will delete recursively
+            }
+
+            FileInputFormat.addInputPath(job, new Path("hdfs://localhost:9000/project2/dataset.csv"));
+            FileOutputFormat.setOutputPath(job, outputPath);
+
+            ret = job.waitForCompletion(true);
+
+            boolean convergedAll = true;
+
+            //Read current centroids
+            List<String> currentC = dataGenerator.getListFromFile("src/main/data/kMeanOutput/centroids" + i + ".csv/part-r-00000");
+
+            //See if there is a center that didn't converge
+            for(String center : currentC) {
+                String[] coords = center.split("\t");
+                if(coords[1].equals("no")) {
+                    convergedAll = false;
+                    break;
+                }
+            }
+
+            //Stop iterating when all centers converged
+            if(convergedAll) break;
+
         }
-
-        FileInputFormat.addInputPath(job, new Path("hdfs://localhost:9000/project2/dataset.csv"));
-        FileOutputFormat.setOutputPath(job, outputPath);
-
-        boolean ret = job.waitForCompletion(true);
 
         long endTime = System.currentTimeMillis();
         System.out.println((endTime - startTime) / 1000.0 + " seconds");

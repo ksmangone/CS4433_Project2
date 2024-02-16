@@ -1,12 +1,14 @@
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FSDataOutputStream;
-import java.io.OutputStreamWriter;
+import org.apache.hadoop.io.IOUtils;
 
 public class dataGenerator {
 
@@ -17,10 +19,10 @@ public class dataGenerator {
         int dataSize = 3000;
         int maxValueXY = 5000;
 
-        writeDatasetToCSV(dataSize, maxValueXY, "src/main/data/dataset.csv");
+        writeDatasetToCSV(dataSize, maxValueXY, "src/main/data/dataset.csv", false);
     }
 
-    public static void writeDatasetToCSV(int size, int maxValue, String filename) {
+    public static void writeDatasetToCSV(int size, int maxValue, String filename, boolean centroids) {
         Configuration conf = new Configuration();
 
         try (FileSystem fs = FileSystem.get(conf)) {
@@ -29,16 +31,21 @@ public class dataGenerator {
 
             PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream));
 
-            // Write CSV header
-//            writer.println("id,x,y");
-
             Random random = new Random();
 
-            // Write data
-            for (int i = 0; i < size; i++) {
-                int x = random.nextInt(maxValue + 1);
-                int y = random.nextInt(maxValue + 1);
-                writer.println(x + "," + y);
+            if(centroids) {
+                for (int i = 0; i < size; i++) {
+                    List<String> points = getListFromFile("src/main/data/dataset.csv");
+                    int index = random.nextInt(points.size());
+                    writer.println(points.get(index));
+                }
+            } else {
+                // Write data
+                for (int i = 0; i < size; i++) {
+                    int x = random.nextInt(maxValue + 1);
+                    int y = random.nextInt(maxValue + 1);
+                    writer.println(x + "," + y);
+                }
             }
 
             writer.close();
@@ -47,6 +54,24 @@ public class dataGenerator {
         } catch (IOException e) {
             System.out.println("CSV file failed.");
         }
+    }
+
+    public static List<String> getListFromFile(String fileName) {
+        List<String> output = new ArrayList<>();
+        File file = new File(fileName);
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(file));
+            String line;
+            while (StringUtils.isNotEmpty(line = reader.readLine())) {
+                output.add(line);
+            }
+            IOUtils.closeStream(reader);
+        } catch(FileNotFoundException e) {
+            System.out.println("File not found");
+        } catch(IOException e) {
+            System.out.println(e);
+        }
+        return output;
     }
 
 }
