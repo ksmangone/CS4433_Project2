@@ -4,6 +4,6 @@ pages_clean1 = FOREACH pages GENERATE PersonID, Nationality;
 pages_clean = FILTER pages_clean1 BY Nationality != 'Nationality';
 
 citizensCountByCountry = GROUP pages_clean BY Nationality;
-citizensCountByCountry = FOREACH citizensCountByCountry GENERATE group AS CountryCode, COUNT(pages_clean) AS CitizensCount;
+citizensCountByCountry = FOREACH citizensCountByCountry GENERATE group AS Nationality, COUNT(pages_clean) AS CitizensCount;
 
 STORE citizensCountByCountry INTO 'hdfs://localhost:9000/project2/TaskC.csv' USING PigStorage(',');
